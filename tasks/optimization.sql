@@ -26,30 +26,8 @@ RETURN (
         w.IS_Complit,
         w.FIO,
         CONVERT(VARCHAR(10), w.CREATE_Date, 104) AS D_DATE,
-        (
-            SELECT COUNT(*)
-            FROM WorkItem wi WITH (NOLOCK)
-            WHERE wi.Id_Work = w.Id_Work
-            AND wi.is_complit = 0
-            AND NOT EXISTS (
-                SELECT 1
-                FROM Analiz a WITH (NOLOCK)
-                WHERE a.ID_ANALIZ = wi.ID_ANALIZ
-                AND a.is_group = 1
-            )
-        ) AS WorkItemsNotComplit,
-        (
-            SELECT COUNT(*)
-            FROM WorkItem wi WITH (NOLOCK)
-            WHERE wi.Id_Work = w.Id_Work
-            AND wi.is_complit = 1
-            AND NOT EXISTS (
-                SELECT 1
-                FROM Analiz a WITH (NOLOCK)
-                WHERE a.ID_ANALIZ = wi.ID_ANALIZ
-                AND a.is_group = 1
-            )
-        ) AS WorkItemsComplit,
+        wi_counts.WorkItemsNotComplit,
+        wi_counts.WorkItemsComplit,
         ISNULL(e.SURNAME, '') + ' ' +
         ISNULL(LEFT(e.NAME, 1), '') + '. ' +
         ISNULL(LEFT(e.PATRONYMIC, 1), '') + '.' AS FULL_NAME,
@@ -64,5 +42,18 @@ RETURN (
     FROM Works w WITH (NOLOCK)
     LEFT JOIN WorkStatus ws WITH (NOLOCK) ON w.StatusId = ws.StatusID
     LEFT JOIN Employee e WITH (NOLOCK) ON w.Id_Employee = e.Id_Employee
+    CROSS APPLY (
+        SELECT
+            COUNT(CASE WHEN wi.is_complit = 0 THEN 1 END) AS WorkItemsNotComplit,
+            COUNT(CASE WHEN wi.is_complit = 1 THEN 1 END) AS WorkItemsComplit
+        FROM WorkItem wi WITH (NOLOCK)
+        WHERE wi.Id_Work = w.Id_Work
+        AND NOT EXISTS (
+            SELECT 1
+            FROM Analiz a WITH (NOLOCK)
+            WHERE a.ID_ANALIZ = wi.ID_ANALIZ
+            AND a.is_group = 1
+        )
+    ) AS wi_counts
     WHERE w.IS_DEL <> 1
 )
