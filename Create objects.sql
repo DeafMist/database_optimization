@@ -89,56 +89,48 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE FUNCTION [dbo].[F_WORKS_LIST] (
-)
-RETURNS @RESULT TABLE
-(
-ID_WORK INT,
-CREATE_Date DATETIME,
-MaterialNumber DECIMAL(8,2),
-IS_Complit BIT,
-FIO VARCHAR(255),
-D_DATE varchar(10),
-WorkItemsNotComplit int,
-WorkItemsComplit int,
-FULL_NAME VARCHAR(101),
-StatusId smallint,
-StatusName VARCHAR(255),
-Is_Print bit
-)
+CREATE OR ALTER FUNCTION [dbo].[F_WORKS_LIST]()
+RETURNS TABLE
 AS
--- СПИСОК РАБОТ
-begin
-insert into @result
-SELECT
-  Works.Id_Work,
-  Works.CREATE_Date,
-  Works.MaterialNumber,
-  Works.IS_Complit,
-  Works.FIO,
-  convert(varchar(10), works.CREATE_Date, 104 ) as D_DATE,
-  dbo.F_WORKITEMS_COUNT_BY_ID_WORK(works.Id_Work,0) as WorkItemsNotComplit,
-  dbo.F_WORKITEMS_COUNT_BY_ID_WORK(works.Id_Work,1) as WorkItemsComplit,
-  dbo.F_EMPLOYEE_FULLNAME(Works.Id_Employee) as EmployeeFullName,
-  Works.StatusId,
-  WorkStatus.StatusName,
-  case
-      when (Works.Print_Date is not null) or
-      (Works.SendToClientDate is not null) or
-      (works.SendToDoctorDate is not null) or
-      (Works.SendToOrgDate is not null) or
-      (Works.SendToFax is not null)
-      then 1
-      else 0
-  end as Is_Print  
-FROM
- Works
- left outer join WorkStatus on (Works.StatusId = WorkStatus.StatusID)
-where
- WORKS.IS_DEL <> 1
- order by id_work desc -- works.MaterialNumber desc
-return
-end
+RETURN (
+    SELECT
+        w.Id_Work,
+        w.CREATE_Date,
+        w.MaterialNumber,
+        w.IS_Complit,
+        w.FIO,
+        CONVERT(VARCHAR(10), w.CREATE_Date, 104) AS D_DATE,
+        wi_counts.WorkItemsNotComplit,
+        wi_counts.WorkItemsComplit,
+        ISNULL(e.SURNAME, '') + ' ' +
+        ISNULL(LEFT(e.NAME, 1), '') + '. ' +
+        ISNULL(LEFT(e.PATRONYMIC, 1), '') + '.' AS FULL_NAME,
+        w.StatusId,
+        ws.StatusName,
+        CASE WHEN w.Print_Date IS NOT NULL OR
+                  w.SendToClientDate IS NOT NULL OR
+                  w.SendToDoctorDate IS NOT NULL OR
+                  w.SendToOrgDate IS NOT NULL OR
+                  w.SendToFax IS NOT NULL
+             THEN 1 ELSE 0 END AS Is_Print
+    FROM Works w WITH (NOLOCK)
+    LEFT JOIN WorkStatus ws WITH (NOLOCK) ON w.StatusId = ws.StatusID
+    LEFT JOIN Employee e WITH (NOLOCK) ON w.Id_Employee = e.Id_Employee
+    CROSS APPLY (
+        SELECT
+            COUNT(CASE WHEN wi.is_complit = 0 THEN 1 END) AS WorkItemsNotComplit,
+            COUNT(CASE WHEN wi.is_complit = 1 THEN 1 END) AS WorkItemsComplit
+        FROM WorkItem wi WITH (NOLOCK)
+        WHERE wi.Id_Work = w.Id_Work
+        AND NOT EXISTS (
+            SELECT 1
+            FROM Analiz a WITH (NOLOCK)
+            WHERE a.ID_ANALIZ = wi.ID_ANALIZ
+            AND a.is_group = 1
+        )
+    ) AS wi_counts
+    WHERE w.IS_DEL <> 1
+)
 
 GO
 /****** Object:  Table [dbo].[Analiz]    Script Date: 28.04.2024 19:21:25 ******/
@@ -404,6 +396,11 @@ CREATE NONCLUSTERED INDEX [XIF3Works] ON [dbo].[Works]
 (
 	[Id_Employee_Del] ASC
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, SORT_IN_TEMPDB = OFF, DROP_EXISTING = OFF, ONLINE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
+
+CREATE INDEX IX_Works_IdWork_Del ON Works(Id_Work) WHERE IS_DEL <> 1
+CREATE INDEX IX_WorkItem_WorkAnaliz ON WorkItem(Id_Work, is_complit, ID_ANALIZ)
+CREATE INDEX IX_Analiz_Group ON Analiz(ID_ANALIZ) WHERE is_group = 1
+
 GO
 ALTER TABLE [dbo].[Employee] ADD  DEFAULT (suser_sname()) FOR [Login_Name]
 GO
