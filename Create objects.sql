@@ -397,9 +397,16 @@ CREATE NONCLUSTERED INDEX [XIF3Works] ON [dbo].[Works]
 	[Id_Employee_Del] ASC
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, SORT_IN_TEMPDB = OFF, DROP_EXISTING = OFF, ONLINE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
 
-CREATE INDEX IX_Works_IdWork_Del ON Works(Id_Work) WHERE IS_DEL <> 1
-CREATE INDEX IX_WorkItem_WorkAnaliz ON WorkItem(Id_Work, is_complit, ID_ANALIZ)
-CREATE INDEX IX_Analiz_Group ON Analiz(ID_ANALIZ) WHERE is_group = 1
+GO
+CREATE NONCLUSTERED INDEX IX_Works_IsDel_IncludeIdWork
+ON dbo.Works (Is_Del)
+INCLUDE (Id_Work)
+WHERE Is_Del <> 1
+
+GO
+CREATE NONCLUSTERED INDEX IX_Analiz_IsGroup
+ON dbo.Analiz (is_group)
+INCLUDE (ID_ANALIZ)
 
 GO
 ALTER TABLE [dbo].[Employee] ADD  DEFAULT (suser_sname()) FOR [Login_Name]
